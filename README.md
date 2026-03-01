@@ -1,75 +1,111 @@
 # DevOps IP Address Management System (IPAM)
 
-Plateforme IPAM sécurisée, multi-site et prête pour la production.
+A secure, multi-site, production-ready IPAM platform built with FastAPI, React, PostgreSQL and Docker
 
-## Stack
+## Features
 
-- Backend: FastAPI, SQLAlchemy 2.0 async, PostgreSQL, Alembic, Pydantic v2, python-jose, passlib+bcrypt, loguru
-- Frontend: React + Vite + TypeScript + TailwindCSS + Axios
-- Infra: Docker multi-stage, Docker Compose, Nginx reverse proxy, healthchecks, volumes persistants
+- JWT auth in `httpOnly` cookies (`access_token` + `refresh_token`) with refresh rotation
+- Mandatory first admin login setup (must change admin email and password before panel access)
+- CSRF protection (double-submit cookie), strict CORS, and rate limiting
+- Role-based access control (`ADMIN`, `VIEWER`)
+- Multi-site IP management: Sites, Subnets, IP Addresses
+- Smart free IP suggestion
+- Network scan support (`nmap`/ARP) with conflict detection and IP persistence
+- CSV import/export with validation and rollback safety
+- Audit logs for sensitive operations
+- Dashboard with usage metrics and dark mode
 
-## Fonctionnalités
+## Tech Stack
 
-- Authentification JWT en cookies httpOnly (`access_token` + `refresh_token`) avec rotation refresh token
-- Première connexion admin: changement obligatoire email + mot de passe avant accès au panel
-- Protection CSRF (double-submit cookie), CORS strict, rate limiting middleware
-- RBAC (`ADMIN`, `VIEWER`)
-- Gestion multi-site: Sites, Subnets, IPs
-- Suggestion d'IP libre intelligente via `ipaddress`
-- Scan réseau optionnel via `nmap` (détection conflits)
-- Import CSV sécurisé (schéma strict, taille max, rollback atomique)
-- Export CSV contrôlé par RBAC
-- Journal d’audit (qui modifie quoi)
-- Dashboard (IPs par site/subnet, % libres) + mode sombre frontend
+- Backend: FastAPI, SQLAlchemy 2 async, PostgreSQL, Alembic, Pydantic v2
+- Security: python-jose (JWT), passlib + bcrypt, CSRF middleware
+- Frontend: React, Vite, TypeScript, TailwindCSS, Axios
+- Infra: Docker multi-stage, Docker Compose, Nginx reverse proxy, Certbot
 
-## Arborescence
+## Project Structure
 
 ```text
-/backend
-  /app
-    /api
-    /models
-    /schemas
-    /core
-    /services
-    /utils
-  /alembic
-  Dockerfile
-
-/frontend
-  /src
-  Dockerfile
-
-/docker
-  nginx.conf
-
+backend/
+  app/
+  alembic/
+frontend/
+  src/
+docker/
 docker-compose.yml
 .env.example
 README.md
 ```
 
-## Variables d’environnement
+## Prerequisites
 
-1. Copier `.env.example` vers `.env`
-2. Remplir en priorité:
-   - `JWT_SECRET_KEY` (>= 32 chars)
-   - `POSTGRES_PASSWORD`
-   - `ADMIN_PASSWORD`
-  - `CORS_ORIGINS` (origines strictes, sans slash final, séparées par virgule)
+- Docker Engine
+- Optional for local (non-Docker) run:
+  - Python 3.12+
+  - Node.js 20+
 
-## Lancement (Docker)
+## Quick Start (Docker)
+
+### 1) Create your environment file
+
+Linux/macOS:
 
 ```bash
 cp .env.example .env
+```
+
+PowerShell:
+
+```powershell
+Copy-Item .env.example .env
+```
+
+### 2) Update critical variables in `.env`
+
+At minimum, set:
+
+- `JWT_SECRET_KEY` (long random value, at least 32 chars)
+- `POSTGRES_PASSWORD`
+- `ADMIN_PASSWORD`
+- `FRONTEND_URL`
+- `CORS_ORIGINS` (strict origin format, comma-separated, no trailing slash, no path)
+
+Example:
+
+```env
+FRONTEND_URL=http://localhost
+CORS_ORIGINS=http://localhost
+COOKIE_SECURE=false
+```
+
+### 3) Start the full stack
+
+```bash
 docker compose up --build -d
 ```
 
-Accès:
+### 4) Open the app
+
 - App: `http://localhost`
 - API docs: `http://localhost/docs`
-- Health API: `http://localhost/health`
+- Health: `http://localhost/health`
 
-## Commandes utiles
+### 5) First admin login requirement
+
+On first login with default admin credentials, the app forces you to change:
+
+- Admin email
+- Admin password
+
+You cannot access the rest of the panel until this setup is completed.
+
+## Default Credentials (for first run only)
+
+- Email: value of `ADMIN_EMAIL` (default: `admin@ipam.local`)
+- Password: value of `ADMIN_PASSWORD`
+
+Change both immediately through the first-login setup screen.
+
+## Useful Commands
 
 ```bash
 make up
@@ -77,9 +113,12 @@ make down
 make logs
 make backend-lint
 make backend-test
+make frontend-lint
 ```
 
-## Backend local (hors Docker)
+## Local Development (without Docker)
+
+### Backend
 
 ```bash
 cd backend
@@ -89,7 +128,7 @@ alembic upgrade head
 uvicorn app.main:app --reload
 ```
 
-## Frontend local (hors Docker)
+### Frontend
 
 ```bash
 cd frontend
@@ -97,70 +136,60 @@ npm install
 npm run dev
 ```
 
-## Sécurité appliquée
-
-- Hash mots de passe: bcrypt (`passlib`)
-- JWT access/refresh + rotation
-- Cookies httpOnly pour JWT
-- CSRF middleware pour requêtes mutables
-- Validation stricte Pydantic v2
-- SQLAlchemy ORM (protection SQL injection)
-- Sanitization des champs utilisateur
-- CORS strict configurable
-- Rate limiting global par IP
-- Rate limiting Redis-ready (`REDIS_URL`) avec fallback mémoire
-- Logs structurés (`loguru`) + audit logs
-- Aucune clé hardcodée, secrets uniquement via `.env`
-
-## Rôles
-
-### Admin
-- CRUD IP
-- CRUD Site/Subnet
-- Scan réseau
-- Import CSV
-- Gestion utilisateurs
-
-### Viewer
-- Lecture (dashboard, sites, subnets, IPs)
-- Export CSV
-
-## Endpoints principaux
+## Main API Endpoints
 
 - Auth: `/api/v1/auth/register`, `/login`, `/refresh`, `/logout`, `/me`, `/first-login-setup`, `/change-password`
+- Users: `/api/v1/users`
 - Sites: `/api/v1/sites`
 - Subnets: `/api/v1/subnets`
 - IPs: `/api/v1/ips`, `/ips/suggest/{subnet_id}`, `/ips/import`, `/ips/export`
 - Scan: `/api/v1/scan/{subnet_id}`
 - Dashboard: `/api/v1/dashboard/stats`
 
+## Security Notes
+
+- Keep `COOKIE_SECURE=true` in production (HTTPS required)
+- Restrict `CORS_ORIGINS` to trusted domains only
+- Never commit `.env` files or real secrets
+- Consider adding SAST/DAST checks in CI/CD
+- Optional distributed rate limiting is available with `REDIS_URL`
+
+## WAN + HTTPS (Let's Encrypt)
+
+1. Point your domain `A` record to your public IP
+2. Forward ports `80` and `443` to your Docker host
+3. Set in `.env`:
+   - `DOMAIN_NAME=your-domain.com`
+   - `LETSENCRYPT_EMAIL=you@your-domain.com`
+   - `FRONTEND_URL=https://your-domain.com`
+   - `CORS_ORIGINS=https://your-domain.com`
+   - `COOKIE_SECURE=true`
+4. Start stack:
+
+```bash
+docker compose up --build -d
+```
+
+5. Create certificate:
+
+```bash
+make tls-init
+```
+
+6. Reload Nginx:
+
+```bash
+docker compose restart nginx
+```
+
+Certificate renewal is handled by the `certbot` service. You can also run manual renewal:
+
+```bash
+make tls-renew
+```
+
 ## Tests
 
 - `backend/tests/test_health.py`
 - `backend/tests/test_scan_service.py`
-
-## Notes production
-
-- Activer HTTPS en frontal (obligatoire si `COOKIE_SECURE=true`)
-- Restreindre `CORS_ORIGINS` aux domaines autorisés
-- Utiliser le format strict d'origine: `https://domaine.tld` (pas de path, pas de slash final)
-- Ne jamais utiliser les credentials par défaut en production
-- Ajouter un scanner SAST/DAST dans le pipeline CI/CD
-
-## Accès WAN + TLS (Let's Encrypt)
-
-1. Configurer DNS: `A` record de ton domaine vers ton IP publique.
-2. Ouvrir/NAT routeur: `80` et `443` vers la machine Docker.
-3. Mettre dans `.env`:
-  - `DOMAIN_NAME=ton-domaine.com`
-  - `LETSENCRYPT_EMAIL=toi@ton-domaine.com`
-  - `FRONTEND_URL=https://ton-domaine.com`
-  - `CORS_ORIGINS=https://ton-domaine.com`
-  - `COOKIE_SECURE=true`
-4. Démarrer la stack: `docker compose up --build -d`.
-5. Générer le certificat: `make tls-init`.
-6. Redémarrer nginx pour activer HTTPS: `docker compose restart nginx`.
-
-Renouvellement:
-- Service `certbot` présent dans `docker-compose.yml` (boucle de renouvellement automatique).
-- Vérification manuelle possible: `make tls-renew`.
+- `backend/tests/test_config.py`
